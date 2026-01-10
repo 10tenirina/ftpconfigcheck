@@ -4,73 +4,80 @@
 filename=$1
 
 if [ -z "$filename" ]; then
-	echo "EROARE: Trebuie să specificati calea către fisierul de configurare."
+	echo "Eroare: Trebuie sa specificati calea catre fisierul de configurare."
    	echo "Utilizare: $0 /etc/vsftpd.conf"
 	exit 1;
 fi
 
 if [ ! -f "$filename" ]; then
-	echo "EROARE: Fișierul '$filename' nu a fost găsit!"
+	echo "Eroare: Fisierul '$filename' nu a fost gasit!"
 	exit 1;
 fi
 
-echo "===RAPORT SECURITATE FTP: $fileame==="
+echo "===RAPORT SECURITATE FTP: $filename==="
 
+#se citesc permisiunile si proprietarul fisierului de configurare
 perm=$(stat -c %a "$filename")
 owner=$(stat -c %U "$filename")
 
-echo "Permisiuni: $perm | Proprietar: $owner"
+echo "Permisiuni: $perm | Proprietar: $owner "
 
 if [ "$perm" != "600" ] && [ "$perm" != "644" ]; then
-    echo "[!!] ALERTA: Permisiuni nesigure! Recomandat 600."
+    echo "!! ALERTA: Permisiuni nesigure! Recomandat 600."
 fi
 if [ "$owner" != "root" ]; then
-    echo "[!!] ALERTA: Proprietarul nu este root! Risc de manipulare."
+    echo "!! ALERTA: Fisierul nu este detinut de root! Risc de manipulare a fisierului."
 fi
 
 echo "--------------------------------"
 
-echo -e "\n==== ANALIZĂ OPȚIUNI CRITICE ===="
+echo -e "\n==== ANALIZA OPTIUNI CRITICE ==== "
 
+#functia generala pentru verificarea unei directive de configurare
 verifica_setare() {
 setare=$1
 valoare_buna=$2
 mesaj_eroare=$3
 
-actual=$(grep "^$setare=" "$filename" | tail -1 |cut -d'=' -f2)
+#luam ultima aparitie a directivei (daca sunt duplicate, ultima ramane activa, chiar daca exista spatii in plus)
+actual=$(grep -v '^[[:space:]]*#' "$filename" \
+	| grep -E "^[[:space:]]*$setare[[:space:]]*=" \
+	| tail -1 \
+	| cut -d'=' -f2 \
+	| tr -d '[:space:]')
 
 if [ -z "$actual" ]; then
-	echo "INFO: $setare: Nu este configurat (se foloseste setarea standard)."
+	echo "INFO: $setare nu este configurat (se foloseste valoarea implicita)."
 elif [ "$actual" == "$valoare_buna" ]; then
-	echo "[OK]. $setare este $actual."
+	echo "OK: $setare este $actual (valoare recomandata)."
 else
-	echo "[!!]ALERTA: $setare este $actual! $mesaj_eroare"
+	echo "!! ALERTA: $setare este $actual! $mesaj_eroare"
 fi
 }
 
-verifica_setare "anonymous_enable" "NO" "Oricine se poate loga fără parolă!"
-verifica_setare "chroot_local_user" "YES" "Lipsa de izolare! Utilizatorii pot vedea fișierele de sistem!"
-verifica_setare "ssl_enable" "YES" "Parolele sunt trimise necriptat prin rețea!"
-verifica_setare "local_enable" "YES" "Utilizatorii locali sunt blocați."
-verifica_setare "write_enable" "YES" "Serverul este Read-Only (scriere dezactivată)."
-verifica_setare "allow_writeable_chroot" "NO" "Risc securitate: scriere permisă în rădăcina chroot."
-verifica_setare "max_clients" "50" "Fără limită de clienți (Risc atac DoS)."
-verifica_setare "max_per_ip" "5" "Un singur IP poate ocupa toate conexiunile."
-verifica_setare "listen" "YES" "Serverul nu rulează în mod standalone."
+verifica_setare "anonymous_enable" "NO" "Acces anonim activ, oricine se poate loga fara parola!"
+verifica_setare "chroot_local_user" "YES" "Utilizatorii locali nu sunt izolati (pot vedea mai multe fisiere din sistem)!"
+verifica_setare "ssl_enable" "YES" "Conexiunile nu sunt criptate (parolele pot fi interceptate)!"
+verifica_setare "local_enable" "YES" "Utilizatorii locali nu se pot autentifica."
+verifica_setare "write_enable" "YES" "Serverul este Read-Only (utilizatorii nu pot scrie pe server)."
+verifica_setare "allow_writeable_chroot" "NO" "Risc securitate: scriere permisa in directorul chroot."
+verifica_setare "max_clients" "50" "Fara limita de clienti (Risc de atac DoS)."
+verifica_setare "max_per_ip" "5" "Un singur IP poate ocupa prea multe conexiuni in acelasi timp."
 echo "---------------------------------------"
 
-echo "=====Analiză duplicate:====="
+echo "Analiza directive duplicate:"
+#cautam directive care apar de mai multe ori in fisier (ignoram comentariile)
 duplicate=$(grep -v "^#" "$filename" | cut -d'=' -f1 | sort | uniq -d)
 
 if [ -z "$duplicate" ]; then
-    echo "[OK]Nu s-au găsit setări duplicate."
+    echo "OK: Nu s-au gasit setari duplicate."
 else
 	for d in $duplicate; do
         	linii=$(grep -n "^$d=" "$filename" | cut -d':' -f1 | tr '\n' ',' | sed 's/,$//')
-        	val_finala=$(grep "^$d=" "$filename" | tail -1 | cut -d'=' -f2)
-        	echo "[ !! ] Directiva '$d' apare la liniile ($linii). Valoarea activă: $val_finala."
+        	val_finala=$(grep "^$d=" "$filename" | tail -1 | cut -d'=' -f2 | tr -d '[:space:]')
+        	echo "!! Directiva '$d' apare in mod repetat la liniile ($linii). Valoarea finala folosita: $val_finala."
     	done
 fi
 echo "---------------------------------------"
-echo "=== SFÂRȘIT RAPORT ==="
+echo "SFARSIT RAPORT"
 echo "---------------------------------------"
