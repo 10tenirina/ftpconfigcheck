@@ -43,6 +43,7 @@ mesaj_eroare=$3
 actual=$(grep -v '^[[:space:]]*#' "$filename" \
 	| grep -E "^[[:space:]]*$setare[[:space:]]*=" \
 	| tail -1 \
+	| sed 's/#.*$//' \
 	| cut -d'=' -f2 \
 	| tr -d '[:space:]')
 
@@ -67,14 +68,21 @@ echo "---------------------------------------"
 
 echo "Analiza directive duplicate:"
 #cautam directive care apar de mai multe ori in fisier (ignoram comentariile)
-duplicate=$(grep -v "^#" "$filename" | cut -d'=' -f1 | sort | uniq -d)
+duplicate=$(grep -v '^[[:space:]]*#' "$filename" \
+	 | awk -F= '/=/{ key=$1; gsub(/^[ \t]+|[ \t]+$/,"",key); print key }' \
+	 | sort | uniq -d)
 
 if [ -z "$duplicate" ]; then
     echo "OK: Nu s-au gasit setari duplicate."
 else
 	for d in $duplicate; do
-        	linii=$(grep -n "^$d=" "$filename" | cut -d':' -f1 | tr '\n' ',' | sed 's/,$//')
-        	val_finala=$(grep "^$d=" "$filename" | tail -1 | cut -d'=' -f2 | tr -d '[:space:]')
+        	linii=$(grep -n -E "^[[:space:]]*$d[[:space:]]*=" "$filename" \
+	 		| cut -d':' -f1 | tr '\n' ',' | sed 's/,$//')
+        	val_finala=$(grep -E "^[[:space:]]*$d[[:space:]]*=" "$filename" \
+			 | tail -1 \
+			 | sed 's/#.*$//' \
+			 | cut -d'=' -f2- \
+			 | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')
         	echo "!! Directiva '$d' apare in mod repetat la liniile ($linii). Valoarea finala folosita: $val_finala."
     	done
 fi
